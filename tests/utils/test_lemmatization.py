@@ -76,10 +76,47 @@ class TestLemmatizeForBm25:
         assert "gpt-4" in tokens
         assert "covid-19" in tokens
 
-    def test_ing_form_of_hyphenated_token_kept(self):
-        """The -ing branch keeps hyphenated original forms as well."""
+    def test_plain_word_still_indexed(self):
+        """Ordinary words must keep round-tripping through the lemma index."""
+        from mem0.utils.lemmatization import lemmatize_for_bm25
+
+        result = lemmatize_for_bm25("I remember multiple memories of the system")
+        tokens = result.split()
+        assert "memory" in tokens
+        assert "system" in tokens
+        # A lone plain word survives untouched.
+        assert lemmatize_for_bm25("meeting").split() == ["meeting"]
+
+    def test_model_name_variants_kept(self):
+        """Hyphenated model names in their real spellings stay single terms."""
+        from mem0.utils.lemmatization import lemmatize_for_bm25
+
+        result = lemmatize_for_bm25("compare mixtral-8x7b with gpt-4o and text-embedding-3")
+        tokens = result.split()
+        assert "mixtral-8x7b" in tokens
+        assert "gpt-4o" in tokens
+        # The hyphen is never split: the term stays whole, no bare fragments.
+        assert "8x7b" not in tokens
+        assert "4o" not in tokens
+
+    def test_non_alphanumeric_lemmas_dropped(self):
+        """The widened predicate still drops lemmas that are not alphanumeric
+        even after removing hyphens (abbreviations, handles, decimals)."""
+        from mem0.utils.lemmatization import lemmatize_for_bm25
+
+        result = lemmatize_for_bm25("see e.g. u.s.a @user 3.14 details")
+        tokens = result.split()
+        for junk in ["e.g.", "u.s.a", "@us", "3.14"]:
+            assert junk not in tokens
+        # The real words around them are unaffected.
+        assert "detail" in tokens or "details" in tokens
+
+    def test_hyphenated_phrase_words_kept(self):
+        """spaCy splits hyphenated phrases (state-of-the-art) into words: the
+        words stay indexed and the bare hyphens never reach the index."""
         from mem0.utils.lemmatization import lemmatize_for_bm25
 
         result = lemmatize_for_bm25("state-of-the-art tooling here")
         tokens = result.split()
         assert "state" in tokens and "art" in tokens
+        assert "-" not in tokens
